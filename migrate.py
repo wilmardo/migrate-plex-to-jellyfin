@@ -1,6 +1,11 @@
+from typing import List
+
 import requests
 import urllib3
 import click
+import re
+import sys
+
 from plexapi.server import PlexServer
 from jellyfin_client import JellyFinServer
 
@@ -17,53 +22,93 @@ class bcolors:
 
 
 @click.command()
-@click.option('--secure/--insecure', help='Verify SSL')
 @click.option('--plex-url', required=True, help='Plex server url')
 @click.option('--plex-token', required=True, help='Plex token')
 @click.option('--jellyfin-url', help='Jellyfin server url')
 @click.option('--jellyfin-token', help='Jellyfin token')
-def migrate(secure: bool, plex_url: str, plex_token: str, jellyfin_url: str,
-    jellyfin_token: str):
+@click.option('--jellyfin-user', help='Jellyfin user')
+@click.option('--secure/--insecure', help='Verify SSL')
+@click.option('--debug/--no-debug', help='Print more output')
+@click.option('--no-skip/--skip', help='Skip when no match it found instead of exiting')
+def migrate(plex_url: str, plex_token: str, jellyfin_url: str,
+            jellyfin_token: str, jellyfin_user: str,
+            secure: bool, debug: bool, no_skip: bool):
 
     # Remove insecure request warnings
-    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    if not secure:
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+    # Setup sessions
     session = requests.Session()
     session.verify = secure
     plex = PlexServer(plex_url, plex_token, session=session)
 
-    jellyfin = JellyFinServer(url=jellyfin_url, api_key=jellyfin_token, session=session)
+    jellyfin = JellyFinServer(
+        url=jellyfin_url, api_key=jellyfin_token, session=session)
 
+    # Watched list from Plex
+    plex_watched = []
+
+    # Get all Plex watched movies
     plex_movies = plex.library.section('Films')
-    watched_movies = []
-    for video in plex_movies.search(unwatched=False):
-        watched_movies.append(video.title)
+    for m in plex_movies.search(unwatched=False):
+        info = _extract_provider(data=m.guid)
+        info['title'] = m.title
+        plex_watched.append(info)
 
-    # plex_tvshows = plex.library.section('TV Shows')
-    # plex_watched_episodes = []
-    # for show in plex_tvshows.search(unwatched=False):
-    #     for e in plex.library.section('TV Shows').get(show.title).episodes():
-    #         if e.isWatched:
-    #             plex_watched_episodes.append(e)
+    # Get all Plex watched episodes
+    plex_tvshows = plex.library.section('TV Shows')
+    plex_watched_episodes = []
+    for show in plex_tvshows.search(unwatched=False):
+        for e in plex.library.section('TV Shows').get(show.title).episodes():
+            info = _extract_provider(data=m.guid)
+            info['title'] = f"{show.title} {e.seasonEpisode.capitalize()} {e.title}"  # s01e03 > S01E03
+            plex_watched.append(info)
 
-    # for u in jellyfin.get_users():
-    #     search_result = jellyfin.search(user_id=u['id'], item_type='movie', query='Zero Days')
-    #     if len(search_result) != 1:
-    #         print('More then one match for {}')
-    #         exit(1)
-    #     else:
-    #         jellyfin.mark_watched(user_id=u['id'], item_id=search_result[0]['Id'])
+    # This gets all jellyfin movies since filtering on provider id isn't supported:
+    # https://github.com/jellyfin/jellyfin/issues/1990
+    jf_uid = jellyfin.get_user_id(name=jellyfin_user)
+    jf_library = jellyfin.get_all(user_id=jf_uid)
 
-    for u in jellyfin.get_users():
-        for m in watched_movies:
-            search_result = jellyfin.search(user_id=u['id'], item_type='movie', query=m)
-            if len(search_result) != 1:
-                print(f'{bcolors.WARNING}{len(search_result)} matches for {m}{bcolors.ENDC}')
-                # exit(1)
-            else:
-                jellyfin.mark_watched(user_id=u['id'], item_id=search_result[0]['Id'])
-                print('marked {} as watched'.format(m))
+    for w in plex_watched:
+        search_result = _search(jf_library, w)
+        if search_result and not search_result['UserData']['Played']:
+            jellyfin.mark_watched(
+                user_id=jf_uid, item_id=search_result['Id'])
+            print(f"{bcolors.OKGREEN}Marked {w['title']} as watched{bcolors.ENDC}")
+        elif not search_result:
+            print(f"{bcolors.WARNING}No matches for {w['title']}{bcolors.ENDC}")
+            if not skip:
+                sys.exit(1)
+        else:
+            if debug:
+                print(f"{bcolors.OKBLUE}{w['title']}{bcolors.ENDC}")
 
+    print(f"{bcolors.OKGREEN}Succesfully migrated {plex_watched.length()} items{bcolors.ENDC}")
+
+
+def _search(data: dict, item: dict) -> List:
+    for d in data:
+        if d['ProviderIds'].get(item['provider']) == item['item_id']:
+            return d
+
+
+def _extract_provider(data: dict) -> dict:
+    """Extract Plex provider and return JellyFin compatible data
+
+    Args:
+        data (dict): plex episode or movie guid
+
+    Returns:
+        dict: provider in JellyFin format and item_id as identifier
+    """
+    # example: 'com.plexapp.agents.imdb://tt1068680?lang=en'
+    # example: 'com.plexapp.agents.thetvdb://248741/1/1?lang=en'
+    match = re.match('com\.plexapp\.agents\.(.*):\/\/(.*)\?', data)
+    return {
+        'provider': match.group(1).replace('the', '').capitalize(),  # Jellyfin uses Imdb and Tvdb
+        'item_id': match.group(2)
+    }
 
 if __name__ == '__main__':
     migrate()
