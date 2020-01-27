@@ -84,7 +84,7 @@ def migrate(plex_url: str, plex_token: str, jellyfin_url: str,
             if debug:
                 print(f"{bcolors.OKBLUE}{w['title']}{bcolors.ENDC}")
 
-    print(f"{bcolors.OKGREEN}Succesfully migrated {plex_watched.length()} items{bcolors.ENDC}")
+    print(f"{bcolors.OKGREEN}Succesfully migrated {len(plex_watched)} items{bcolors.ENDC}")
 
 
 def _search(data: dict, item: dict) -> List:
