@@ -88,6 +88,15 @@ def migrate(plex_url: str, plex_token: str, jellyfin_url: str,
 
 
 def _search(data: dict, item: dict) -> List:
+    """Search for plex item in jellyfin library
+
+    Args:
+        data (dict): jellyfin lib as returned by client
+        item (dict): Plex item
+
+    Returns:
+        List: [description]
+    """
     for d in data:
         if d['ProviderIds'].get(item['provider']) == item['item_id']:
             return d
