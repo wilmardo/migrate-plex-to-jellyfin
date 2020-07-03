@@ -70,24 +70,24 @@ def migrate(plex_url: str, plex_token: str, jellyfin_url: str,
     jf_uid = jellyfin.get_user_id(name=jellyfin_user)
     jf_library = jellyfin.get_all(user_id=jf_uid)
 
-    for w in plex_watched:
-        search_result = _search(jf_library, w)
+    for watched in plex_watched:
+        search_result = _search(jf_library, watched)
         if search_result and not search_result['UserData']['Played']:
             jellyfin.mark_watched(
                 user_id=jf_uid, item_id=search_result['Id'])
-            print(f"{bcolors.OKGREEN}Marked {w['title']} as watched{bcolors.ENDC}")
+            print(f"{bcolors.OKGREEN}Marked {watched['title']} as watched{bcolors.ENDC}")
         elif not search_result:
-            print(f"{bcolors.WARNING}No matches for {w['title']}{bcolors.ENDC}")
+            print(f"{bcolors.WARNING}No matches for {watched['title']}{bcolors.ENDC}")
             if not skip:
                 sys.exit(1)
         else:
             if debug:
-                print(f"{bcolors.OKBLUE}{w['title']}{bcolors.ENDC}")
+                print(f"{bcolors.OKBLUE}{watched['title']}{bcolors.ENDC}")
 
     print(f"{bcolors.OKGREEN}Succesfully migrated {len(plex_watched)} items{bcolors.ENDC}")
 
 
-def _search(data: dict, item: dict) -> List:
+def _search(lib_data: dict, item: dict) -> List:
     """Search for plex item in jellyfin library
 
     Args:
@@ -97,9 +97,9 @@ def _search(data: dict, item: dict) -> List:
     Returns:
         List: [description]
     """
-    for d in data:
-        if d['ProviderIds'].get(item['provider']) == item['item_id']:
-            return d
+    for data in lib_data:
+        if data['ProviderIds'].get(item['provider']) == item['item_id']:
+            return data
 
 
 def _extract_provider(data: dict) -> dict:
