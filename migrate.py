@@ -91,7 +91,7 @@ def _search(lib_data: dict, item: dict) -> List:
     """Search for plex item in jellyfin library
 
     Args:
-        data (dict): jellyfin lib as returned by client
+        lib_data (dict): jellyfin lib as returned by client
         item (dict): Plex item
 
     Returns:
