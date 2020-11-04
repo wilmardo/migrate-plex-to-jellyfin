@@ -78,7 +78,7 @@ def migrate(plex_url: str, plex_token: str, jellyfin_url: str,
             print(f"{bcolors.OKGREEN}Marked {watched['title']} as watched{bcolors.ENDC}")
         elif not search_result:
             print(f"{bcolors.WARNING}No matches for {watched['title']}{bcolors.ENDC}")
-            if not skip:
+            if no_skip:
                 sys.exit(1)
         else:
             if debug:
