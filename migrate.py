@@ -59,7 +59,7 @@ def migrate(plex_url: str, plex_token: str, jellyfin_url: str,
     # Get all Plex watched episodes
     plex_tvshows = plex.library.section('TV Shows')
     plex_watched_episodes = []
-    for show in plex_tvshows.search(unwatched=False):
+    for show in plex_tvshows.search(**{"episode.unwatched": False}):
         for e in plex.library.section('TV Shows').get(show.title).episodes():
             info = _extract_provider(data=m.guid)
             info['title'] = f"{show.title} {e.seasonEpisode.capitalize()} {e.title}"  # s01e03 > S01E03
