@@ -50,9 +50,18 @@ def migrate(plex_url: str, plex_token: str, jellyfin_url: str,
     plex_watched = []
 
     # Get all Plex watched movies
+    # TODO: remove harcoded library name
     plex_movies = plex.library.section('Films')
     for m in plex_movies.search(unwatched=False):
         info = _extract_provider(data=m.guid)
+
+        if not info:
+            print(f"{bcolors.WARNING}No provider match in {m.guid} for {m.title}{bcolors.ENDC}")
+            if no_skip:
+                sys.exit(1)
+            else:
+                continue
+
         info['title'] = m.title
         plex_watched.append(info)
 
@@ -61,7 +70,16 @@ def migrate(plex_url: str, plex_token: str, jellyfin_url: str,
     plex_watched_episodes = []
     for show in plex_tvshows.search(**{"episode.unwatched": False}):
         for e in plex.library.section('TV Shows').get(show.title).episodes():
-            info = _extract_provider(data=m.guid)
+            info = _extract_provider(data=e.guid)
+            
+            # TODO: feels copy paste of above, move to function
+            if not info:
+                print(f"{bcolors.WARNING}No provider match in {e.guid} for {show.title} {e.seasonEpisode.capitalize()} {bcolors.ENDC}")
+                if no_skip:
+                    sys.exit(1)
+                else:
+                    continue
+
             info['title'] = f"{show.title} {e.seasonEpisode.capitalize()} {e.title}"  # s01e03 > S01E03
             plex_watched.append(info)
 
@@ -111,13 +129,20 @@ def _extract_provider(data: dict) -> dict:
     Returns:
         dict: provider in JellyFin format and item_id as identifier
     """
+    result = {}
+
     # example: 'com.plexapp.agents.imdb://tt1068680?lang=en'
     # example: 'com.plexapp.agents.thetvdb://248741/1/1?lang=en'
     match = re.match('com\.plexapp\.agents\.(.*):\/\/(.*)\?', data)
-    return {
-        'provider': match.group(1).replace('the', '').capitalize(),  # Jellyfin uses Imdb and Tvdb
-        'item_id': match.group(2)
-    }
+
+    if match:
+        result = {
+            'provider': match.group(1).replace('the', '').capitalize(),  # Jellyfin uses Imdb and Tvdb
+            'item_id': match.group(2)
+        }
+
+    return result
+
 
 if __name__ == '__main__':
     migrate()
