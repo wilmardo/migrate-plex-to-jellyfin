@@ -30,9 +30,12 @@ class bcolors:
 @click.option('--secure/--insecure', help='Verify SSL')
 @click.option('--debug/--no-debug', help='Print more output')
 @click.option('--no-skip/--skip', help='Skip when no match it found instead of exiting')
+@click.option('--plex-tv-lib', default='TV Shows', help='Name of Plex TV library')
+@click.option('--plex-movie-lib', default='Films', help='Name of Plex movie library')
 def migrate(plex_url: str, plex_token: str, jellyfin_url: str,
             jellyfin_token: str, jellyfin_user: str,
-            secure: bool, debug: bool, no_skip: bool):
+            secure: bool, debug: bool, no_skip: bool,
+            plex_tv_lib: str, plex_movie_lib: str):
 
     # Remove insecure request warnings
     if not secure:
@@ -51,7 +54,7 @@ def migrate(plex_url: str, plex_token: str, jellyfin_url: str,
 
     # Get all Plex watched movies
     # TODO: remove harcoded library name
-    plex_movies = plex.library.section('Films')
+    plex_movies = plex.library.section(plex_movie_lib)
     for m in plex_movies.search(unwatched=False):
         info = _extract_provider(data=m.guid)
 
@@ -66,10 +69,10 @@ def migrate(plex_url: str, plex_token: str, jellyfin_url: str,
         plex_watched.append(info)
 
     # Get all Plex watched episodes
-    plex_tvshows = plex.library.section('TV Shows')
+    plex_tvshows = plex.library.section(plex_tv_lib)
     plex_watched_episodes = []
     for show in plex_tvshows.search(**{"episode.unwatched": False}):
-        for e in plex.library.section('TV Shows').get(show.title).episodes():
+        for e in plex.library.section(plex_tv_lib).get(show.title).episodes():
             info = _extract_provider(data=e.guid)
             
             # TODO: feels copy paste of above, move to function
