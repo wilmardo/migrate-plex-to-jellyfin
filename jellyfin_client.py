@@ -55,13 +55,24 @@ class JellyFinServer:
         Returns:
             List: List of results
         """
-        q = {
-            'Recursive': True,
-            'Fields': 'ProviderIds'
-        }
-        result = self._get(
-            endpoint=f"Users/{user_id}/Items", payload=q)
-        return result['Items']
+        results = []
+        startIndex = 0
+        while True:
+            q = {
+                'Recursive': True,
+                'Fields': 'ProviderIds',
+                'startIndex': startIndex,
+                'Limit': 10,
+                'includeItemTypes': 'Movie',
+            }
+            n = self._get(
+                endpoint=f"Users/{user_id}/Items", payload=q)['Items']
+            results += n
+            startIndex += 10
+            print(f"Fetched {startIndex} movies from jellyfin {[r['Name'] for r in results[-10:]]}")
+            if len(n) == 0:
+                break
+        return results
 
     def search_by_provider(self, user_id: str, provider: str, item_id: str) -> List:
         """Search items by provider id
