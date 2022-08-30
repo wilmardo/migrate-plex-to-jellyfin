@@ -11,15 +11,16 @@ class JellyFinServer:
     session: requests.Session
 
     def _get(self, endpoint: str, payload: Optional[dict] = {}) -> dict:
+        url = '{}/{}'.format(self.url, endpoint)
         payload['api_key'] = self.api_key
         r = self.session.get(
-            url='{}/{}'.format(self.url, endpoint), params=payload)
+            url=url, params=payload, timeout=60)
         return r.json()
 
     def _post(self, endpoint, payload: Optional[dict] = {}) -> bool:
         payload['api_key'] = self.api_key
         r = self.session.post(
-            url='{}/{}'.format(self.url, endpoint), params=payload)
+            url='{}/{}'.format(self.url, endpoint), params=payload, timeout=60)
 
     def get_users(self) -> List[dict]:
         """Get all Jellfin user
