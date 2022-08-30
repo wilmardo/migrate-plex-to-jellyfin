@@ -58,19 +58,20 @@ class JellyFinServer:
         """
         results = []
         startIndex = 0
+        batchSize = 100
         while True:
             q = {
                 'Recursive': True,
                 'Fields': 'ProviderIds',
                 'startIndex': startIndex,
-                'Limit': 10,
+                'Limit': batchSize,
                 'includeItemTypes': 'Movie',
             }
             n = self._get(
                 endpoint=f"Users/{user_id}/Items", payload=q)['Items']
             results += n
-            startIndex += 10
-            print(f"Fetched {startIndex} movies from jellyfin {[r['Name'] for r in results[-10:]]}")
+            startIndex += batchSize
+            print(f"Fetched {startIndex} items from jellyfin {[str(r) for r in results[-3:]]}")
             if len(n) == 0:
                 break
         return results

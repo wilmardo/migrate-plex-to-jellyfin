@@ -1,10 +1,13 @@
-from typing import List
+#!/bin/python3
+
+from typing import List, Optional
 
 import requests
 import urllib3
 import click
 import re
 import sys
+import pickle
 
 from plexapi.server import PlexServer
 from jellyfin_client import JellyFinServer
@@ -149,3 +152,4 @@ def _extract_provider(data: dict) -> dict:
 
 if __name__ == '__main__':
     migrate()
+
