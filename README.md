@@ -35,3 +35,16 @@ Options:
   --no-skip / --skip     Skip when no match it found instead of exiting
   --help                 Show this message and exit.
 ```
+
+## Using Docker image
+
+In the folder, build the image using:
+
+```
+docker build -t migrate-plex-to-jellyfin:local .
+```
+
+then run it using the following command:
+```
+docker run migrate-plex-to-jellyfin:local --insecure --debug --plex-url https://plex.test.com:32400 --plex-token 123123123 --jellyfin-url https://jellyfin.test.com --jellyfin-token 123123123 --jellyfin-user user
+```
