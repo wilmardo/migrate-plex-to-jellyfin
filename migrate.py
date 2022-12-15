@@ -56,7 +56,7 @@ def migrate(plex_url: str, plex_token: str, jellyfin_url: str,
     # TODO: remove harcoded library name
     plex_movies = plex.library.section(plex_movie_lib)
     for m in plex_movies.search(unwatched=False):
-        info = _extract_provider(data=m.guid)
+        info = _extract_provider(data=m.guids, kind="imdb")
 
         if not info:
             print(f"{bcolors.WARNING}No provider match in {m.guid} for {m.title}{bcolors.ENDC}")
@@ -73,7 +73,7 @@ def migrate(plex_url: str, plex_token: str, jellyfin_url: str,
     plex_watched_episodes = []
     for show in plex_tvshows.search(**{"episode.unwatched": False}):
         for e in plex.library.section(plex_tv_lib).get(show.title).episodes():
-            info = _extract_provider(data=e.guid)
+            info = _extract_provider(data=e.guids, kind="tvdb")
             
             # TODO: feels copy paste of above, move to function
             if not info:
@@ -123,28 +123,31 @@ def _search(lib_data: dict, item: dict) -> List:
             return data
 
 
-def _extract_provider(data: dict) -> dict:
+def _extract_provider(data: list, kind: str) -> dict:
     """Extract Plex provider and return JellyFin compatible data
 
     Args:
-        data (dict): plex episode or movie guid
+        data (list): external guids
+        kind (str): external id looked for
 
     Returns:
         dict: provider in JellyFin format and item_id as identifier
     """
     result = {}
 
-    # example: 'com.plexapp.agents.imdb://tt1068680?lang=en'
-    # example: 'com.plexapp.agents.thetvdb://248741/1/1?lang=en'
-    match = re.match('com\.plexapp\.agents\.(.*):\/\/(.*)\?', data)
+    # example: '<Guid:tvdb://9229>'
+    # example: '<Guid:imdb://tt2935510>'
+    for guid in data:
 
-    if match:
-        result = {
-            'provider': match.group(1).replace('the', '').capitalize(),  # Jellyfin uses Imdb and Tvdb
-            'item_id': match.group(2)
-        }
+        match = re.match('<Guid:' + kind + ':\/\/(.*)>', str(guid))
 
-    return result
+        if match:
+            result = {
+                'provider': kind.capitalize(),  # Jellyfin uses Imdb and Tvdb
+                'item_id': match.group(1)
+            }
+
+            return result
 
 
 if __name__ == '__main__':
