@@ -1,6 +1,6 @@
 # Migrate Plex to Jellyfin
 
-WIP, project to migrate Plex watched statusses to Jellyfin :)
+WIP, project to migrate Plex watched statusses to Jellyfin, based on the file name of the media :)
 
 ## Getting started
 
@@ -25,8 +25,6 @@ Usage: migrate.py [OPTIONS]
 Options:
   --plex-url TEXT        Plex server url  [required]
   --plex-token TEXT      Plex token  [required]
-  --plex-movie-lib TEXT  Name of plex movie library
-  --plex-tv-lib TEXT     Name of plex tv library
   --jellyfin-url TEXT    Jellyfin server url
   --jellyfin-token TEXT  Jellyfin token
   --jellyfin-user TEXT   Jellyfin user
