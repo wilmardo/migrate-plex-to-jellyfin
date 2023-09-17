@@ -81,9 +81,12 @@ def migrate(plex_url: str, plex_token: str, jellyfin_url: str,
 
 
     marked = 0
+    missing = 0
+    skipped = 0
     for watched in plex_watched:
         if watched not in jf_entries:
             logger.bind(path=watched).warning("no match found on jellyfin")
+            missing += 1
             continue
         for jf_entry in jf_entries[watched]:
             if not jf_entry["UserData"]["Played"]:
@@ -91,10 +94,10 @@ def migrate(plex_url: str, plex_token: str, jellyfin_url: str,
                 jellyfin.mark_watched(user_id=jf_uid, item_id=jf_entry["Id"])
                 logger.bind(path=watched, jf_id=jf_entry["Id"], title=jf_entry["Name"]).info("Marked as watched")
             else:
+                skipped += 1
                 logger.bind(path=watched, jf_id=jf_entry["Id"], title=jf_entry["Name"]).debug("Skipped marking already-watched media")
 
-
-    logger.success(f"Succesfully migrated {marked} items")
+    logger.bind(updated=marked, missing=missing, skipped=skipped).success(f"Succesfully migrated watched states to jellyfin")
 
 
 def _watch_parts(media: List[Media]) -> Set[str]:
