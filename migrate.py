@@ -66,15 +66,15 @@ def migrate(plex_url: str, plex_token: str, jellyfin_url: str,
     # Get all Plex watched movies
     for section in plex.library.sections():
         if isinstance(section, library.MovieSection):
-            plex_movies = plex.library.section(section.title)
+            plex_movies = section
             for m in plex_movies.search(unwatched=False):
                 parts=_watch_parts(m.media)
                 plex_watched.update(parts)
                 logger.bind(section=section.title, movie=m, parts=parts).debug("watched movie")
         elif isinstance(section, library.ShowSection):
-            plex_tvshows = plex.library.section(section.title)
-            for show in plex_tvshows.search(**{"episode.unwatched": False}):
-                for e in plex.library.section(section.title).get(show.title).episodes():
+            plex_tvshows = section
+            for show in plex_tvshows.searchShows(**{"episode.unwatched": False}):
+                for e in show.watched():
                     parts=_watch_parts(e.media)
                     plex_watched.update(parts)
                     logger.bind(section=section.title, ep=e, parts=parts).debug("watched episode")
