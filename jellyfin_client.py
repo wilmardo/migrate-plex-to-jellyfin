@@ -57,7 +57,7 @@ class JellyFinServer:
         """
         q = {
             'Recursive': True,
-            'Fields': 'ProviderIds'
+            'Fields': 'MediaSources'
         }
         result = self._get(
             endpoint=f"Users/{user_id}/Items", payload=q)

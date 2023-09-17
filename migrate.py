@@ -1,27 +1,24 @@
-from typing import List
+from typing import List, Set
 
 import requests
 import urllib3
 import click
-import re
 import sys
+from loguru import logger
 
 from plexapi.server import PlexServer
+from plexapi import library
+from plexapi.media import Media
 from jellyfin_client import JellyFinServer
 
 
-class bcolors:
-    HEADER = '\033[95m'
-    OKBLUE = '\033[94m'
-    OKGREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    ENDC = '\033[0m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
-
+LOG_FORMAT = ("<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
+              "<level>{level: <8}</level> | "
+              "<level>{message}</level> | "
+              "{extra}")
 
 @click.command()
+@click.option('--debug', required=False, help='Log at debug level')
 @click.option('--plex-url', required=True, help='Plex server url')
 @click.option('--plex-token', required=True, help='Plex token')
 @click.option('--jellyfin-url', help='Jellyfin server url')
@@ -30,12 +27,14 @@ class bcolors:
 @click.option('--secure/--insecure', help='Verify SSL')
 @click.option('--debug/--no-debug', help='Print more output')
 @click.option('--no-skip/--skip', help='Skip when no match it found instead of exiting')
-@click.option('--plex-tv-lib', default='TV Shows', help='Name of Plex TV library')
-@click.option('--plex-movie-lib', default='Films', help='Name of Plex movie library')
 def migrate(plex_url: str, plex_token: str, jellyfin_url: str,
             jellyfin_token: str, jellyfin_user: str,
-            secure: bool, debug: bool, no_skip: bool,
-            plex_tv_lib: str, plex_movie_lib: str):
+            secure: bool, debug: bool, no_skip: bool):
+    logger.remove()
+    if debug:
+        logger.add(sys.stderr, format=LOG_FORMAT, level="DEBUG")
+    else:
+        logger.add(sys.stderr, format=LOG_FORMAT, level="INFO")
 
     # Remove insecure request warnings
     if not secure:
@@ -50,102 +49,61 @@ def migrate(plex_url: str, plex_token: str, jellyfin_url: str,
         url=jellyfin_url, api_key=jellyfin_token, session=session)
 
     # Watched list from Plex
-    plex_watched = []
+    plex_watched = set()
 
-    # Get all Plex watched movies
-    # TODO: remove harcoded library name
-    plex_movies = plex.library.section(plex_movie_lib)
-    for m in plex_movies.search(unwatched=False):
-        info = _extract_provider(data=m.guid)
-
-        if not info:
-            print(f"{bcolors.WARNING}No provider match in {m.guid} for {m.title}{bcolors.ENDC}")
-            if no_skip:
-                sys.exit(1)
-            else:
-                continue
-
-        info['title'] = m.title
-        plex_watched.append(info)
-
-    # Get all Plex watched episodes
-    plex_tvshows = plex.library.section(plex_tv_lib)
-    plex_watched_episodes = []
-    for show in plex_tvshows.search(**{"episode.unwatched": False}):
-        for e in plex.library.section(plex_tv_lib).get(show.title).episodes():
-            info = _extract_provider(data=e.guid)
-            
-            # TODO: feels copy paste of above, move to function
-            if not info:
-                print(f"{bcolors.WARNING}No provider match in {e.guid} for {show.title} {e.seasonEpisode.capitalize()} {bcolors.ENDC}")
-                if no_skip:
-                    sys.exit(1)
-                else:
-                    continue
-
-            info['title'] = f"{show.title} {e.seasonEpisode.capitalize()} {e.title}"  # s01e03 > S01E03
-            plex_watched.append(info)
-
-    # This gets all jellyfin movies since filtering on provider id isn't supported:
-    # https://github.com/jellyfin/jellyfin/issues/1990
+    # All the items in jellyfish:
     jf_uid = jellyfin.get_user_id(name=jellyfin_user)
     jf_library = jellyfin.get_all(user_id=jf_uid)
+    jf_entries: dict[str, List[dict]] = {} # map of path -> jf library entry
+    for jf_entry in jf_library:
+        for source in jf_entry.get("MediaSources", []):
+            if source["Path"] not in jf_entries:
+                jf_entries[source["Path"]] = [jf_entry]
+            else:
+                jf_entries[source["Path"]].append(jf_entry)
+            logger.bind(path=source["Path"], id=jf_entry["Id"]).debug("jf entry")
 
+    # Get all Plex watched movies
+    for section in plex.library.sections():
+        if isinstance(section, library.MovieSection):
+            plex_movies = plex.library.section(section.title)
+            for m in plex_movies.search(unwatched=False):
+                parts=_watch_parts(m.media)
+                plex_watched.update(parts)
+                logger.bind(section=section.title, movie=m, parts=parts).debug("watched movie")
+        elif isinstance(section, library.ShowSection):
+            plex_tvshows = plex.library.section(section.title)
+            for show in plex_tvshows.search(**{"episode.unwatched": False}):
+                for e in plex.library.section(section.title).get(show.title).episodes():
+                    parts=_watch_parts(e.media)
+                    plex_watched.update(parts)
+                    logger.bind(section=section.title, ep=e, parts=parts).debug("watched episode")
+
+
+    marked = 0
     for watched in plex_watched:
-        search_result = _search(jf_library, watched)
-        if search_result and not search_result['UserData']['Played']:
-            jellyfin.mark_watched(
-                user_id=jf_uid, item_id=search_result['Id'])
-            print(f"{bcolors.OKGREEN}Marked {watched['title']} as watched{bcolors.ENDC}")
-        elif not search_result:
-            print(f"{bcolors.WARNING}No matches for {watched['title']}{bcolors.ENDC}")
-            if no_skip:
-                sys.exit(1)
-        else:
-            if debug:
-                print(f"{bcolors.OKBLUE}{watched['title']}{bcolors.ENDC}")
-
-    print(f"{bcolors.OKGREEN}Succesfully migrated {len(plex_watched)} items{bcolors.ENDC}")
+        if watched not in jf_entries:
+            logger.bind(path=watched).warning("no match found on jellyfin")
+            continue
+        for jf_entry in jf_entries[watched]:
+            if not jf_entry["UserData"]["Played"]:
+                marked += 1
+                jellyfin.mark_watched(user_id=jf_uid, item_id=jf_entry["Id"])
+                logger.bind(path=watched, jf_id=jf_entry["Id"], title=jf_entry["Name"]).info("Marked as watched")
+            else:
+                logger.bind(path=watched, jf_id=jf_entry["Id"], title=jf_entry["Name"]).debug("Skipped marking already-watched media")
 
 
-def _search(lib_data: dict, item: dict) -> List:
-    """Search for plex item in jellyfin library
-
-    Args:
-        lib_data (dict): jellyfin lib as returned by client
-        item (dict): Plex item
-
-    Returns:
-        List: [description]
-    """
-    for data in lib_data:
-        if data['ProviderIds'].get(item['provider']) == item['item_id']:
-            return data
+    logger.success(f"Succesfully migrated {marked} items")
 
 
-def _extract_provider(data: dict) -> dict:
-    """Extract Plex provider and return JellyFin compatible data
-
-    Args:
-        data (dict): plex episode or movie guid
-
-    Returns:
-        dict: provider in JellyFin format and item_id as identifier
-    """
-    result = {}
-
-    # example: 'com.plexapp.agents.imdb://tt1068680?lang=en'
-    # example: 'com.plexapp.agents.thetvdb://248741/1/1?lang=en'
-    match = re.match('com\.plexapp\.agents\.(.*):\/\/(.*)\?', data)
-
-    if match:
-        result = {
-            'provider': match.group(1).replace('the', '').capitalize(),  # Jellyfin uses Imdb and Tvdb
-            'item_id': match.group(2)
-        }
-
-    return result
-
+def _watch_parts(media: List[Media]) -> Set[str]:
+    watched = set()
+    for medium in media:
+        watched.update(map(lambda p: p.file, medium.parts))
+    return watched
 
 if __name__ == '__main__':
     migrate()
+
+import requests
