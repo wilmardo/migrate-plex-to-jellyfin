@@ -26,9 +26,10 @@ LOG_FORMAT = ("<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
 @click.option('--secure/--insecure', help='Verify SSL')
 @click.option('--debug/--no-debug', help='Print more output')
 @click.option('--no-skip/--skip', help='Skip when no match it found instead of exiting')
+@click.option('--dry-run', is_flag=True, help='Do not commit changes to Jellyfin')
 def migrate(plex_url: str, plex_token: str, jellyfin_url: str,
             jellyfin_token: str, jellyfin_user: str,
-            secure: bool, debug: bool, no_skip: bool):
+            secure: bool, debug: bool, no_skip: bool, dry_run: bool):
     logger.remove()
     if debug:
         logger.add(sys.stderr, format=LOG_FORMAT, level="DEBUG")
@@ -90,8 +91,12 @@ def migrate(plex_url: str, plex_token: str, jellyfin_url: str,
         for jf_entry in jf_entries[watched]:
             if not jf_entry["UserData"]["Played"]:
                 marked += 1
-                jellyfin.mark_watched(user_id=jf_uid, item_id=jf_entry["Id"])
-                logger.bind(path=watched, jf_id=jf_entry["Id"], title=jf_entry["Name"]).info("Marked as watched")
+                if dry_run:
+                    info = "Would be marked as watched (dry run)"
+                else:
+                    jellyfin.mark_watched(user_id=jf_uid, item_id=jf_entry["Id"])
+                    info = "Marked as watched"
+                logger.bind(path=watched, jf_id=jf_entry["Id"], title=jf_entry["Name"]).info(info)
             else:
                 skipped += 1
                 logger.bind(path=watched, jf_id=jf_entry["Id"], title=jf_entry["Name"]).debug("Skipped marking already-watched media")

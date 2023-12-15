@@ -25,12 +25,13 @@ Usage: migrate.py [OPTIONS]
 Options:
   --plex-url TEXT        Plex server url  [required]
   --plex-token TEXT      Plex token  [required]
-  --jellyfin-url TEXT    Jellyfin server url
-  --jellyfin-token TEXT  Jellyfin token
-  --jellyfin-user TEXT   Jellyfin user
+  --jellyfin-url TEXT    Jellyfin server url  [required]
+  --jellyfin-token TEXT  Jellyfin token  [required]
+  --jellyfin-user TEXT   Jellyfin user  [required]
   --secure / --insecure  Verify SSL
   --debug / --no-debug   Print more output
   --no-skip / --skip     Skip when no match it found instead of exiting
+  --dry-run              Do not commit changes to Jellyfin
   --help                 Show this message and exit.
 ```
 
