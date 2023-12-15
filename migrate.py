@@ -20,6 +20,7 @@ LOG_FORMAT = ("<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
 @click.command()
 @click.option('--plex-url', required=True, help='Plex server url')
 @click.option('--plex-token', required=True, help='Plex token')
+@click.option('--plex-managed-user', help='Name of a managed user')
 @click.option('--jellyfin-url', required=True, help='Jellyfin server url')
 @click.option('--jellyfin-token', required=True, help='Jellyfin token')
 @click.option('--jellyfin-user', required=True, help='Jellyfin user')
@@ -27,7 +28,7 @@ LOG_FORMAT = ("<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
 @click.option('--debug/--no-debug', help='Print more output')
 @click.option('--no-skip/--skip', help='Skip when no match it found instead of exiting')
 @click.option('--dry-run', is_flag=True, help='Do not commit changes to Jellyfin')
-def migrate(plex_url: str, plex_token: str, jellyfin_url: str,
+def migrate(plex_url: str, plex_token: str, plex_managed_user: str, jellyfin_url: str,
             jellyfin_token: str, jellyfin_user: str,
             secure: bool, debug: bool, no_skip: bool, dry_run: bool):
     logger.remove()
@@ -47,6 +48,12 @@ def migrate(plex_url: str, plex_token: str, jellyfin_url: str,
 
     jellyfin = JellyFinServer(
         url=jellyfin_url, api_key=jellyfin_token, session=session)
+
+    # Override the Plex session for a managed user
+    if plex_managed_user:
+        managed_account = plex.myPlexAccount().user(plex_managed_user)
+        managed_token = managed_account.get_token(plex.machineIdentifier)
+        plex = PlexServer(plex_url, managed_token, session=session)
 
     # Watched list from Plex
     plex_watched = set()
@@ -92,16 +99,19 @@ def migrate(plex_url: str, plex_token: str, jellyfin_url: str,
             if not jf_entry["UserData"]["Played"]:
                 marked += 1
                 if dry_run:
-                    info = "Would be marked as watched (dry run)"
+                    message = "Would be marked as watched (dry run)"
                 else:
                     jellyfin.mark_watched(user_id=jf_uid, item_id=jf_entry["Id"])
-                    info = "Marked as watched"
-                logger.bind(path=watched, jf_id=jf_entry["Id"], title=jf_entry["Name"]).info(info)
+                    message = "Marked as watched"
+                logger.bind(path=watched, jf_id=jf_entry["Id"], title=jf_entry["Name"]).info(message)
             else:
                 skipped += 1
                 logger.bind(path=watched, jf_id=jf_entry["Id"], title=jf_entry["Name"]).debug("Skipped marking already-watched media")
 
-    logger.bind(updated=marked, missing=missing, skipped=skipped).success(f"Succesfully migrated watched states to jellyfin")
+    message = "Succesfully migrated watched states to Jellyfin"
+    if dry_run:
+        message = "Would migrate watched states to Jellyfin"
+    logger.bind(updated=marked, missing=missing, skipped=skipped).success(message)
 
 
 def _watch_parts(media: List[Media]) -> Set[str]:
