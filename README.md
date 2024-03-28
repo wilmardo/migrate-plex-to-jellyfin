@@ -28,11 +28,22 @@ Options:
   --jellyfin-url TEXT    Jellyfin server url
   --jellyfin-token TEXT  Jellyfin token
   --jellyfin-user TEXT   Jellyfin user
+  --translate PATH:PATH  Translate plex paths to jellyfin
   --secure / --insecure  Verify SSL
   --debug / --no-debug   Print more output
   --no-skip / --skip     Skip when no match it found instead of exiting
   --help                 Show this message and exit.
 ```
+
+### Translation Notes
+
+If your Plex and Jellyfin libraries are mounted in different base directories
+you may translate between the two with the `--translate` option. Each use of
+the option requires two paths separated by a colon. The first path is the Plex
+path and the second is the Jellyfin path.
+
+Translations only happen at the beginning of the path, and ALL translations
+are applied in sequence.
 
 ## Using Docker image
 
