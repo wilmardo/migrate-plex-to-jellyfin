@@ -19,19 +19,26 @@ Command example:
 python3 migrate.py --insecure --debug --plex-url https://plex.test.com:32400 --plex-token 123123123 --jellyfin-url https://jellyfin.test.com --jellyfin-token 123123123 --jellyfin-user user
 ```
 
+To migrate a Plex managed user to a Jellyfin user, specify the managed user's name in addition to the account's token, for example:
+```
+python3 migrate.py --insecure --debug --plex-url https://plex.test.com:32400 --plex-token 123123123 --plex-managed-user user --jellyfin-url https://jellyfin.test.com --jellyfin-token 123123123 --jellyfin-user user
+```
+
 ```
 Usage: migrate.py [OPTIONS]
 
 Options:
-  --plex-url TEXT        Plex server url  [required]
-  --plex-token TEXT      Plex token  [required]
-  --jellyfin-url TEXT    Jellyfin server url
-  --jellyfin-token TEXT  Jellyfin token
-  --jellyfin-user TEXT   Jellyfin user
-  --secure / --insecure  Verify SSL
-  --debug / --no-debug   Print more output
-  --no-skip / --skip     Skip when no match it found instead of exiting
-  --help                 Show this message and exit.
+  --plex-url TEXT           Plex server url  [required]
+  --plex-token TEXT         Plex token  [required]
+  --plex-managed-user TEXT  Name of a managed user
+  --jellyfin-url TEXT       Jellyfin server url  [required]
+  --jellyfin-token TEXT     Jellyfin token  [required]
+  --jellyfin-user TEXT      Jellyfin user  [required]
+  --secure / --insecure     Verify SSL
+  --debug / --no-debug      Print more output
+  --no-skip / --skip        Skip when no match it found instead of exiting
+  --dry-run                 Do not commit changes to Jellyfin
+  --help                    Show this message and exit.
 ```
 
 ## Using Docker image
