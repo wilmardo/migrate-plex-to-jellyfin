@@ -1,4 +1,4 @@
-from typing import List, Set
+from typing import List, Set, Dict, Optional
 
 import requests
 import urllib3
@@ -24,18 +24,29 @@ LOG_FORMAT = ("<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
 @click.option('--jellyfin-url', required=True, help='Jellyfin server url')
 @click.option('--jellyfin-token', required=True, help='Jellyfin token')
 @click.option('--jellyfin-user', required=True, help='Jellyfin user')
+@click.option('--folder-mapping', multiple=True, help='Map Plex folder to Jellyfin folder (format: "plex_path:jellyfin_path")')
 @click.option('--secure/--insecure', help='Verify SSL')
 @click.option('--debug/--no-debug', help='Print more output')
 @click.option('--no-skip/--skip', help='Skip when no match it found instead of exiting')
 @click.option('--dry-run', is_flag=True, help='Do not commit changes to Jellyfin')
 def migrate(plex_url: str, plex_token: str, plex_managed_user: str, jellyfin_url: str,
-            jellyfin_token: str, jellyfin_user: str,
+            jellyfin_token: str, jellyfin_user: str, folder_mapping: List[str],
             secure: bool, debug: bool, no_skip: bool, dry_run: bool):
     logger.remove()
     if debug:
         logger.add(sys.stderr, format=LOG_FORMAT, level="DEBUG")
     else:
         logger.add(sys.stderr, format=LOG_FORMAT, level="INFO")
+
+    # Process folder mappings
+    path_mappings: Dict[str, str] = {}
+    for mapping in folder_mapping:
+        try:
+            plex_path, jellyfin_path = mapping.split(":", 1)
+            path_mappings[plex_path] = jellyfin_path
+            logger.bind(plex_path=plex_path, jellyfin_path=jellyfin_path).debug("Added folder mapping")
+        except ValueError:
+            logger.bind(mapping=mapping).warning("Invalid folder mapping format, expected 'plex_path:jellyfin_path'")
 
     # Remove insecure request warnings
     if not secure:
@@ -91,22 +102,42 @@ def migrate(plex_url: str, plex_token: str, plex_managed_user: str, jellyfin_url
     missing = 0
     skipped = 0
     for watched in plex_watched:
-        if watched not in jf_entries:
-            logger.bind(path=watched).warning("no match found on jellyfin")
-            missing += 1
-            continue
-        for jf_entry in jf_entries[watched]:
-            if not jf_entry["UserData"]["Played"]:
-                marked += 1
-                if dry_run:
-                    message = "Would be marked as watched (dry run)"
+        # Apply path mapping if applicable
+        mapped_path = _map_path(watched, path_mappings)
+        logger.bind(original=watched, mapped=mapped_path).debug("Path mapping")
+        
+        if mapped_path in jf_entries:
+            # Found a match with the mapped path
+            for jf_entry in jf_entries[mapped_path]:
+                if not jf_entry["UserData"]["Played"]:
+                    marked += 1
+                    if dry_run:
+                        message = "Would be marked as watched (dry run)"
+                    else:
+                        jellyfin.mark_watched(user_id=jf_uid, item_id=jf_entry["Id"])
+                        message = "Marked as watched"
+                    logger.bind(path=mapped_path, jf_id=jf_entry["Id"], title=jf_entry["Name"]).info(message)
                 else:
-                    jellyfin.mark_watched(user_id=jf_uid, item_id=jf_entry["Id"])
-                    message = "Marked as watched"
-                logger.bind(path=watched, jf_id=jf_entry["Id"], title=jf_entry["Name"]).info(message)
+                    skipped += 1
+                    logger.bind(path=mapped_path, jf_id=jf_entry["Id"], title=jf_entry["Name"]).debug("Skipped marking already-watched media")
+        else:
+            # Try with original path if no match found with mapped path
+            if watched in jf_entries:
+                for jf_entry in jf_entries[watched]:
+                    if not jf_entry["UserData"]["Played"]:
+                        marked += 1
+                        if dry_run:
+                            message = "Would be marked as watched (dry run)"
+                        else:
+                            jellyfin.mark_watched(user_id=jf_uid, item_id=jf_entry["Id"])
+                            message = "Marked as watched"
+                        logger.bind(path=watched, jf_id=jf_entry["Id"], title=jf_entry["Name"]).info(message)
+                    else:
+                        skipped += 1
+                        logger.bind(path=watched, jf_id=jf_entry["Id"], title=jf_entry["Name"]).debug("Skipped marking already-watched media")
             else:
-                skipped += 1
-                logger.bind(path=watched, jf_id=jf_entry["Id"], title=jf_entry["Name"]).debug("Skipped marking already-watched media")
+                logger.bind(path=watched, mapped_path=mapped_path).warning("no match found on jellyfin")
+                missing += 1
 
     message = "Succesfully migrated watched states to Jellyfin"
     if dry_run:
@@ -119,6 +150,15 @@ def _watch_parts(media: List[Media]) -> Set[str]:
     for medium in media:
         watched.update(map(lambda p: p.file, medium.parts))
     return watched
+
+
+def _map_path(path: str, path_mappings: Dict[str, str]) -> str:
+    """Apply path mappings to convert a Plex path to a Jellyfin path."""
+    for plex_path, jellyfin_path in path_mappings.items():
+        if path.startswith(plex_path):
+            return path.replace(plex_path, jellyfin_path, 1)
+    return path
+
 
 if __name__ == '__main__':
     migrate()
