@@ -24,11 +24,6 @@ To migrate a Plex managed user to a Jellyfin user, specify the managed user's na
 python3 migrate.py --insecure --debug --plex-url https://plex.test.com:32400 --plex-token 123123123 --plex-managed-user user --jellyfin-url https://jellyfin.test.com --jellyfin-token 123123123 --jellyfin-user user
 ```
 
-If your media locations differ between Plex and Jellyfin, you can map folders using the `--folder-mapping` option. You can specify this option multiple times for different mappings:
-```
-python3 migrate.py --insecure --debug --plex-url https://plex.test.com:32400 --plex-token 123123123 --jellyfin-url https://jellyfin.test.com --jellyfin-token 123123123 --jellyfin-user user --folder-mapping "/media/plexseries:/media/series" --folder-mapping "/media/plexfilms:/media/films"
-```
-
 ```
 Usage: migrate.py [OPTIONS]
 
@@ -39,7 +34,6 @@ Options:
   --jellyfin-url TEXT       Jellyfin server url  [required]
   --jellyfin-token TEXT     Jellyfin token  [required]
   --jellyfin-user TEXT      Jellyfin user  [required]
-  --folder-mapping TEXT     Map Plex folder to Jellyfin folder (format: "plex_path:jellyfin_path")
   --secure / --insecure     Verify SSL
   --debug / --no-debug      Print more output
   --no-skip / --skip        Skip when no match it found instead of exiting
@@ -58,9 +52,4 @@ docker build -t migrate-plex-to-jellyfin:local .
 then run it using the following command:
 ```
 docker run migrate-plex-to-jellyfin:local --insecure --debug --plex-url https://plex.test.com:32400 --plex-token 123123123 --jellyfin-url https://jellyfin.test.com --jellyfin-token 123123123 --jellyfin-user user
-```
-
-For folder mapping with Docker, use the same format:
-```
-docker run migrate-plex-to-jellyfin:local --plex-token eEuVdZzkdATKsozxW43u --plex-url 'https://plex.decaunes.eu' --jellyfin-url 'https://jellyfin.decaunes.eu' --jellyfin-token fa6d9f26881a424c950bec2ceccdb2ae --jellyfin-user storm1er --folder-mapping "/media/plexseries:/media/series" --folder-mapping "/media/plexfilms:/media/films"
 ```
