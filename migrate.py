@@ -99,6 +99,8 @@ def migrate(plex_url: str, plex_token: str, plex_managed_user: str, jellyfin_url
     jf_entries: dict[str, List[dict]] = {} # map of path -> jf library entry
     for jf_entry in jf_library:
         for source in jf_entry.get("MediaSources", []):
+            if "Path" not in source:
+                continue
             if source["Path"] not in jf_entries:
                 jf_entries[source["Path"]] = [jf_entry]
             else:
