@@ -34,7 +34,7 @@ Options:
   --jellyfin-url TEXT       Jellyfin server url  [required]
   --jellyfin-token TEXT     Jellyfin token  [required]
   --jellyfin-user TEXT      Jellyfin user  [required]
-  --translate PATH:PATH  Translate plex paths to jellyfin
+  --translate PATH|PATH  Translate plex paths to jellyfin
   --secure / --insecure     Verify SSL
   --debug / --no-debug      Print more output
   --no-skip / --skip        Skip when no match it found instead of exiting

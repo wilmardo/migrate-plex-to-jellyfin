@@ -32,7 +32,8 @@ def build_translation_library(args: List[str]) -> TranslationLib:
     tranlations: TranslationLib = []
 
     for arg in args:
-        src, dst = arg.split(":", 1)
+        src, dst = arg.split("|", 1)
+
         tranlations.append(PathTranslation(src=src, dst=dst))
 
     return tranlations
@@ -44,6 +45,13 @@ def translate_path(path: str, translations: TranslationLib) -> str:
     for t in translations:
         if tr_path.startswith(t.src):
             tr_path = t.dst + tr_path[len(t.src) :]
+
+            # If dst is Linux-ish, normalise to forward slashes
+            if "/" in t.dst and "\\" in tr_path:
+                tr_path = tr_path.replace("\\", "/")
+            # If dst is Windows-ish, normalise to backslashes
+            elif "\\" in t.dst and "/" in tr_path:
+                tr_path = tr_path.replace("/", "\\")
 
     return tr_path
 
