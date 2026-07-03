@@ -1,5 +1,6 @@
-# BUILD STAGE
-FROM python:slim
+FROM python:3.12-alpine
+
+RUN apk add --no-cache bash tini
 
 WORKDIR /usr/src/app
 
@@ -8,6 +9,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-ENTRYPOINT [ "python3", "migrate.py" ]
+RUN chmod +x create_cron.sh
 
-CMD [ "python3", "migrate.py", "--help" ]
+ENTRYPOINT ["/sbin/tini", "--", "./create_cron.sh"]

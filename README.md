@@ -62,5 +62,12 @@ docker build -t migrate-plex-to-jellyfin:local .
 
 then run it using the following command:
 ```
-docker run migrate-plex-to-jellyfin:local --insecure --debug --plex-url https://plex.test.com:32400 --plex-token 123123123 --jellyfin-url https://jellyfin.test.com --jellyfin-token 123123123 --jellyfin-user user
+docker run --rm \
+  -e CRON_SCHEDULE="*/15 * * * *" \
+  -e PLEX_URL="https://plex.test.com:32400" \
+  -e PLEX_TOKEN="123123123" \
+  -e JELLYFIN_URL="https://jellyfin.test.com" \
+  -e JELLYFIN_TOKEN="123123123" \
+  -e JELLYFIN_USER="user" \
+  migrate-plex-to-jellyfin:local
 ```
