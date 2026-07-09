@@ -10,16 +10,25 @@ class JellyFinServer:
     api_key: str
     session: requests.Session
 
+    @property
+    def headers(self) -> dict:
+        return {
+            "Authorization": f'MediaBrowser Token="{self.api_key}", Client="PlexMigrationScript", Device="Linux", DeviceId="migration-script", Version="1.0.0"',
+            "Accept": "application/json"
+        }
+
     def _get(self, endpoint: str, payload: Optional[dict] = {}) -> dict:
-        payload['api_key'] = self.api_key
         r = self.session.get(
-            url='{}/{}'.format(self.url, endpoint), params=payload)
+            url='{}/{}'.format(self.url, endpoint), params=payload, headers=self.headers)
+        if r.status_code > 300:
+            raise Exception(f"code: {r.status_code} body: {r.text[:500]}")
         return r.json()
 
     def _post(self, endpoint, payload: Optional[dict] = {}) -> bool:
-        payload['api_key'] = self.api_key
         r = self.session.post(
-            url='{}/{}'.format(self.url, endpoint), params=payload)
+            url='{}/{}'.format(self.url, endpoint), params=payload, headers=self.headers)
+        if r.status_code > 300:
+            raise Exception(f"code: {r.status_code} body: {r.text[:500]}")
 
     def get_users(self) -> List[dict]:
         """Get all Jellfin user
