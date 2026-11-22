@@ -6,6 +6,7 @@ import requests
 import urllib3
 import click
 import sys
+from datetime import datetime
 from loguru import logger
 
 from plexapi.server import PlexServer
@@ -98,7 +99,10 @@ def migrate(plex_url: str, plex_token: str, plex_managed_user: str, jellyfin_url
         plex = PlexServer(plex_url, managed_token, session=session)
 
     # Watched list from Plex
-    plex_watched = set()
+    # A dictionary of "file path" -> "last watched datetime". Note that in
+    # cases where there are multiple parts to a media entry, all paths will
+    # have the same datetime value.
+    plex_watched_dict: dict[str, datetime] = {}
 
     # All the items in jellyfish:
     logger.info("Loading Jellyfin Items...")
@@ -121,23 +125,25 @@ def migrate(plex_url: str, plex_token: str, plex_managed_user: str, jellyfin_url
         if isinstance(section, library.MovieSection):
             plex_movies = section
             for m in plex_movies.search(unwatched=False):
-                parts=_watch_parts(m.media)
-                plex_watched.update(parts)
-                logger.bind(section=section.title, movie=m, parts=parts).debug("watched movie")
+                # dict of file_path -> datetime.
+                parts_dict = _watch_parts(m.media, m.lastViewedAt)
+                plex_watched_dict.update(parts_dict)
+                logger.bind(section=section.title, movie=m, parts=parts_dict).debug("watched movie")
         elif isinstance(section, library.ShowSection):
             plex_tvshows = section
             for show in plex_tvshows.searchShows(**{"episode.unwatched": False}):
                 for e in show.watched():
-                    parts=_watch_parts(e.media)
-                    plex_watched.update(parts)
-                    logger.bind(section=section.title, ep=e, parts=parts).debug("watched episode")
+                    # dict of file_path -> datetime.
+                    parts_dict = _watch_parts(e.media, e.lastViewedAt)
+                    plex_watched_dict.update(parts_dict)
+                    logger.bind(section=section.title, ep=e, parts=parts_dict).debug("watched episode")
 
     tr_library = build_translation_library(translate)
 
     marked = 0
     missing = 0
     skipped = 0
-    for watched in plex_watched:
+    for watched, lastViewedAt in plex_watched_dict.items():
 
         tr_watched = translate_path(watched, tr_library)
 
@@ -164,11 +170,13 @@ def migrate(plex_url: str, plex_token: str, plex_managed_user: str, jellyfin_url
     logger.bind(updated=marked, missing=missing, skipped=skipped).success(message)
 
 
-def _watch_parts(media: List[Media]) -> Set[str]:
-    watched: Set[str] = set()
+def _watch_parts(media: List[Media], last_viewed_at: datetime) -> dict[str, datetime]:
+    """Extract all filenames from a given media item and attach "last watched" datetime."""
+    watched_dict: dict[str, datetime] = {}
     for medium in media:
-        watched.update(map(lambda p: p.file, medium.parts))
-    return watched
+        # Note that all the "parts" have the same `last_viewed_at` value:
+        watched_dict.update(map(lambda p: (p.file, last_viewed_at), medium.parts))
+    return watched_dict
 
 if __name__ == '__main__':
     migrate()
