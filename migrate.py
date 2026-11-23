@@ -12,6 +12,7 @@ from loguru import logger
 from plexapi.server import PlexServer
 from plexapi import library
 from plexapi.media import Media
+from plexapi.utils import setDatetimeTimezone
 from jellyfin_client import JellyFinServer
 
 
@@ -84,6 +85,13 @@ def migrate(plex_url: str, plex_token: str, plex_managed_user: str, jellyfin_url
     if not secure:
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+    # Ensure Plex API returns time zone data.
+    # Note that, by default, the Plex Python API returns "naive" datetime
+    # objects, without time zone data, but converted from UTC to "local" time.
+    # We need time zone data to make sure we can properly convert it back to
+    # UTC for Jellyfin! (Added in Plex API version `4.18.1`.)
+    setDatetimeTimezone(True)
+
     # Setup sessions
     session = requests.Session()
     session.verify = secure
@@ -125,16 +133,19 @@ def migrate(plex_url: str, plex_token: str, plex_managed_user: str, jellyfin_url
         if isinstance(section, library.MovieSection):
             plex_movies = section
             for m in plex_movies.search(unwatched=False):
-                # dict of file_path -> datetime.
-                parts_dict = _watch_parts(m.media, m.lastViewedAt)
+                # Note call to `astimezone()` here -- if time zone data is
+                # still missing, this will properly set it to "local",
+                # accounting for Daylight Savings, etc.
+                _warn_if_no_time_zone(m)
+                parts_dict = _watch_parts(m.media, m.lastViewedAt.astimezone())
                 plex_watched_dict.update(parts_dict)
                 logger.bind(section=section.title, movie=m, parts=parts_dict).debug("watched movie")
         elif isinstance(section, library.ShowSection):
             plex_tvshows = section
             for show in plex_tvshows.searchShows(**{"episode.unwatched": False}):
                 for e in show.watched():
-                    # dict of file_path -> datetime.
-                    parts_dict = _watch_parts(e.media, e.lastViewedAt)
+                    _warn_if_no_time_zone(e)
+                    parts_dict = _watch_parts(e.media, e.lastViewedAt.astimezone())
                     plex_watched_dict.update(parts_dict)
                     logger.bind(section=section.title, ep=e, parts=parts_dict).debug("watched episode")
 
@@ -159,7 +170,7 @@ def migrate(plex_url: str, plex_token: str, plex_managed_user: str, jellyfin_url
                 else:
                     jellyfin.mark_watched(user_id=jf_uid, item_id=jf_entry["Id"])
                     message = "Marked as watched"
-                logger.bind(path=tr_watched, jf_id=jf_entry["Id"], title=jf_entry["Name"]).info(message)
+                logger.bind(path=tr_watched, watch_time=lastViewedAt, jf_id=jf_entry["Id"], title=jf_entry["Name"]).info(message)
             else:
                 skipped += 1
                 logger.bind(path=tr_watched, jf_id=jf_entry["Id"], title=jf_entry["Name"]).debug("Skipped marking already-watched media")
@@ -168,6 +179,15 @@ def migrate(plex_url: str, plex_token: str, plex_managed_user: str, jellyfin_url
     if dry_run:
         message = "Would migrate watched states to Jellyfin"
     logger.bind(updated=marked, missing=missing, skipped=skipped).success(message)
+
+
+def _warn_if_no_time_zone(m):
+    """Warn if Plex "last watched" datetimes are missing time zones. We handle
+    this case so it shouldn't matter too much, but it's still an indicator of
+    something weird going on."""
+    lastViewedAt = m.lastViewedAt
+    if not lastViewedAt.tzinfo:
+        logger.bind(media=m, last_watched=lastViewedAt).warning("no time zone data included in Plex result")
 
 
 def _watch_parts(media: List[Media], last_viewed_at: datetime) -> dict[str, datetime]:
