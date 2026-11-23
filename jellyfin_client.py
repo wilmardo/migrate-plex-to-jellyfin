@@ -1,5 +1,6 @@
 from typing import List, Optional
 from dataclasses import dataclass
+from datetime import timezone
 
 import requests
 
@@ -92,11 +93,17 @@ class JellyFinServer:
             endpoint='Users/{}/Items'.format(user_id), payload=q)
         return result['Items']
 
-    def mark_watched(self, user_id: str, item_id: str):
+    def mark_watched(self, user_id: str, item_id: str, last_watched_date: datetime=None):
         """Mark item as watched
 
         Args:
             user_id (str): User to mark as watched
             item_id (str): itemId to mark as watched
+            last_watched_date (datetime): when the item was last watched. If
+            this param is not specified, the Jellyfin API defaults to "now".
         """
-        self._post(endpoint='Users/{}/PlayedItems/{}'.format(user_id, item_id))
+        q = {}
+        if last_watched_date:
+            last_watched_iso_string = last_watched_date.astimezone(timezone.utc).isoformat()
+            q['datePlayed'] = last_watched_iso_string
+        self._post(endpoint='Users/{}/PlayedItems/{}'.format(user_id, item_id), payload=q)

@@ -168,7 +168,7 @@ def migrate(plex_url: str, plex_token: str, plex_managed_user: str, jellyfin_url
                 if dry_run:
                     message = "Would be marked as watched (dry run)"
                 else:
-                    jellyfin.mark_watched(user_id=jf_uid, item_id=jf_entry["Id"])
+                    jellyfin.mark_watched(user_id=jf_uid, item_id=jf_entry["Id"], last_watched_date=lastViewedAt)
                     message = "Marked as watched"
                 logger.bind(path=tr_watched, watch_time=lastViewedAt, jf_id=jf_entry["Id"], title=jf_entry["Name"]).info(message)
             else:
