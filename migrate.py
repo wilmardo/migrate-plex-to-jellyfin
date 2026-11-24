@@ -6,11 +6,13 @@ import requests
 import urllib3
 import click
 import sys
+from datetime import datetime
 from loguru import logger
 
 from plexapi.server import PlexServer
 from plexapi import library
 from plexapi.media import Media
+from plexapi.utils import setDatetimeTimezone
 from jellyfin_client import JellyFinServer
 
 
@@ -83,6 +85,13 @@ def migrate(plex_url: str, plex_token: str, plex_managed_user: str, jellyfin_url
     if not secure:
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+    # Ensure Plex API returns time zone data.
+    # Note that, by default, the Plex Python API returns "naive" datetime
+    # objects, without time zone data, but converted from UTC to "local" time.
+    # We need time zone data to make sure we can properly convert it back to
+    # UTC for Jellyfin! (Added in Plex API version `4.18.1`.)
+    setDatetimeTimezone(True)
+
     # Setup sessions
     session = requests.Session()
     session.verify = secure
@@ -98,7 +107,10 @@ def migrate(plex_url: str, plex_token: str, plex_managed_user: str, jellyfin_url
         plex = PlexServer(plex_url, managed_token, session=session)
 
     # Watched list from Plex
-    plex_watched = set()
+    # A dictionary of "file path" -> "last watched datetime". Note that in
+    # cases where there are multiple parts to a media entry, all paths will
+    # have the same datetime value.
+    plex_watched_dict: dict[str, datetime] = {}
 
     # All the items in jellyfish:
     logger.info("Loading Jellyfin Items...")
@@ -121,23 +133,28 @@ def migrate(plex_url: str, plex_token: str, plex_managed_user: str, jellyfin_url
         if isinstance(section, library.MovieSection):
             plex_movies = section
             for m in plex_movies.search(unwatched=False):
-                parts=_watch_parts(m.media)
-                plex_watched.update(parts)
-                logger.bind(section=section.title, movie=m, parts=parts).debug("watched movie")
+                # Note call to `astimezone()` here -- if time zone data is
+                # still missing, this will properly set it to "local",
+                # accounting for Daylight Savings, etc.
+                _warn_if_no_time_zone(m)
+                parts_dict = _watch_parts(m.media, m.lastViewedAt.astimezone())
+                plex_watched_dict.update(parts_dict)
+                logger.bind(section=section.title, movie=m, parts=parts_dict).debug("watched movie")
         elif isinstance(section, library.ShowSection):
             plex_tvshows = section
             for show in plex_tvshows.searchShows(**{"episode.unwatched": False}):
                 for e in show.watched():
-                    parts=_watch_parts(e.media)
-                    plex_watched.update(parts)
-                    logger.bind(section=section.title, ep=e, parts=parts).debug("watched episode")
+                    _warn_if_no_time_zone(e)
+                    parts_dict = _watch_parts(e.media, e.lastViewedAt.astimezone())
+                    plex_watched_dict.update(parts_dict)
+                    logger.bind(section=section.title, ep=e, parts=parts_dict).debug("watched episode")
 
     tr_library = build_translation_library(translate)
 
     marked = 0
     missing = 0
     skipped = 0
-    for watched in plex_watched:
+    for watched, lastViewedAt in plex_watched_dict.items():
 
         tr_watched = translate_path(watched, tr_library)
 
@@ -151,9 +168,9 @@ def migrate(plex_url: str, plex_token: str, plex_managed_user: str, jellyfin_url
                 if dry_run:
                     message = "Would be marked as watched (dry run)"
                 else:
-                    jellyfin.mark_watched(user_id=jf_uid, item_id=jf_entry["Id"])
+                    jellyfin.mark_watched(user_id=jf_uid, item_id=jf_entry["Id"], last_watched_date=lastViewedAt)
                     message = "Marked as watched"
-                logger.bind(path=tr_watched, jf_id=jf_entry["Id"], title=jf_entry["Name"]).info(message)
+                logger.bind(path=tr_watched, watch_time=lastViewedAt, jf_id=jf_entry["Id"], title=jf_entry["Name"]).info(message)
             else:
                 skipped += 1
                 logger.bind(path=tr_watched, jf_id=jf_entry["Id"], title=jf_entry["Name"]).debug("Skipped marking already-watched media")
@@ -164,11 +181,22 @@ def migrate(plex_url: str, plex_token: str, plex_managed_user: str, jellyfin_url
     logger.bind(updated=marked, missing=missing, skipped=skipped).success(message)
 
 
-def _watch_parts(media: List[Media]) -> Set[str]:
-    watched: Set[str] = set()
+def _warn_if_no_time_zone(m):
+    """Warn if Plex "last watched" datetimes are missing time zones. We handle
+    this case so it shouldn't matter too much, but it's still an indicator of
+    something weird going on."""
+    lastViewedAt = m.lastViewedAt
+    if not lastViewedAt.tzinfo:
+        logger.bind(media=m, last_watched=lastViewedAt).warning("no time zone data included in Plex result")
+
+
+def _watch_parts(media: List[Media], last_viewed_at: datetime) -> dict[str, datetime]:
+    """Extract all filenames from a given media item and attach "last watched" datetime."""
+    watched_dict: dict[str, datetime] = {}
     for medium in media:
-        watched.update(map(lambda p: p.file, medium.parts))
-    return watched
+        # Note that all the "parts" have the same `last_viewed_at` value:
+        watched_dict.update(map(lambda p: (p.file, last_viewed_at), medium.parts))
+    return watched_dict
 
 if __name__ == '__main__':
     migrate()
